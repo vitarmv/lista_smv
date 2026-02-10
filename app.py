@@ -1,28 +1,37 @@
 import streamlit as st
+import re
+import math
 import openpyxl
 from io import BytesIO
-import math
 
 # --- CONFIGURACIÓN ---
-st.set_page_config(page_title="Remarcador Pro - Formato Intacto", page_icon="💎", layout="wide")
+st.set_page_config(
+    page_title="Remarcador Pro v7",
+    page_icon="💎",
+    layout="wide"
+)
 
-# --- LÓGICA DE PRECIOS (TU FORMULA) ---
-def calcular_precio_venta(precio_costo):
+# ==========================================
+#        LÓGICA DE CÁLCULO (COMÚN)
+# ==========================================
+def calcular_precio_venta(valor):
     try:
-        # Limpieza por si viene texto o sucios
-        if isinstance(precio_costo, str):
-            limpio = precio_costo.replace('$', '').replace(',', '').strip()
-            if not limpio: return precio_costo
+        # 1. Limpieza de texto a número
+        if isinstance(valor, str):
+            limpio = valor.replace('$', '').replace(',', '').replace('USD', '').strip()
+            # Si es vacío o texto sin números, devolvemos original
+            if not limpio: return valor
             p = float(limpio)
         else:
-            p = float(precio_costo)
+            p = float(valor)
             
-        if p is None or math.isnan(p): return precio_costo
+        # 2. Si no es un número válido (NaN), devolvemos original
+        if p is None or math.isnan(p): return valor
     except:
-        return precio_costo
+        return valor
 
     markup = 0
-    # --- ESCALAS ---
+    # --- TU TABLA DE AUMENTOS ---
     if p < 10: markup = 0.50
     elif 10 <= p < 30: markup = 2.00
     elif 30 <= p < 120: markup = 5.00
@@ -41,75 +50,142 @@ def calcular_precio_venta(precio_costo):
 
     return p + markup
 
-# --- FUNCIÓN DE EDICIÓN EXCEL (PRESERVA FORMATO) ---
-def procesar_excel_preservando_formato(uploaded_file, columna_letra, fila_inicio):
-    # Cargamos el libro de trabajo (Workbook) completo
-    wb = openpyxl.load_workbook(uploaded_file)
-    ws = wb.active # Hoja activa
+# ==========================================
+#        FUNCIÓN 1: PROCESAR TEXTO
+# ==========================================
+def procesar_texto_whatsapp(texto):
+    lineas = texto.splitlines()
+    resultado = []
     
-    # Convertir letra de columna a índice (ej: 'C' -> 3)
+    for linea in lineas:
+        # Busca precios como *$500*, $500, $500.00
+        match = re.search(r'(\*\$|\$)([\d\.,]+)(\*?)', linea)
+        if match:
+            try:
+                precio_str = match.group(2).replace(',', '')
+                precio_base = float(precio_str)
+                precio_nuevo = calcular_precio_venta(precio_base)
+                
+                # Formateo (sin decimales si es entero)
+                if isinstance(precio_nuevo, (int, float)):
+                    if precio_nuevo.is_integer():
+                        precio_final_str = f"{int(precio_nuevo):,}"
+                    else:
+                        precio_final_str = f"{precio_nuevo:,.2f}"
+                    
+                    bloque_original = match.group(0)
+                    bloque_nuevo = f"{match.group(1)}{precio_final_str}{match.group(3)}"
+                    linea_nueva = linea.replace(bloque_original, bloque_nuevo)
+                    resultado.append(linea_nueva)
+                else:
+                    resultado.append(linea)
+            except:
+                resultado.append(linea)
+        else:
+            resultado.append(linea)
+    return "\n".join(resultado)
+
+# ==========================================
+#        FUNCIÓN 2: PROCESAR EXCEL
+# ==========================================
+def procesar_excel_preservando_formato(uploaded_file, columna_letra, fila_inicio):
+    # Carga el archivo manteniendo estilos
+    wb = openpyxl.load_workbook(uploaded_file)
+    ws = wb.active # Toma la hoja activa
+    
+    # Convierte letra a índice (A=1, B=2, C=3...)
     col_idx = openpyxl.utils.column_index_from_string(columna_letra)
     
     cambios = 0
     
-    # Iteramos solo sobre la columna indicada, desde la fila de inicio
-    # ws.iter_rows devuelve tuplas, por eso tomamos row[0]
+    # Recorre solo la columna indicada desde la fila indicada
     for row in ws.iter_rows(min_row=fila_inicio, min_col=col_idx, max_col=col_idx):
         celda = row[0]
         valor_original = celda.value
         
-        # Solo procesamos si hay un valor
+        # Si la celda tiene un valor, intentamos calcular
         if valor_original is not None:
-            # Calculamos nuevo precio
             nuevo_precio = calcular_precio_venta(valor_original)
             
-            # Si cambió el valor (es decir, era un número válido), lo actualizamos
+            # Si el cálculo devolvió un número diferente, actualizamos
             if nuevo_precio != valor_original:
                 celda.value = nuevo_precio
                 cambios += 1
                 
     return wb, cambios
 
-# --- INTERFAZ ---
-st.title("💎 Remarcador: Mantiene tu Formato Original")
-st.markdown("""
-Esta herramienta **edita** los precios directamente en tu archivo Excel sin tocar el diseño, colores o celdas combinadas.
-""")
+# ==========================================
+#            INTERFAZ GRÁFICA
+# ==========================================
 
-uploaded_file = st.file_uploader("Sube tu Excel original (.xlsx)", type=["xlsx"])
+st.title("💎 Remarcador Pro v7")
 
-if uploaded_file:
-    st.info("Configura dónde están los precios para no tocar el resto:")
-    
+# Creamos las pestañas
+tab1, tab2 = st.tabs(["📝 Texto WhatsApp", "📂 Archivo Excel (Formato Intacto)"])
+
+# --- PESTAÑA 1: WHATSAPP ---
+with tab1:
+    st.markdown("### Copia y pega tu lista de WhatsApp")
     col1, col2 = st.columns(2)
     with col1:
-        col_letra = st.text_input("1. ¿En qué COLUMNA están los precios? (Letra)", value="C").upper()
+        input_text = st.text_area("⬇️ Entrada (Precios Costo)", height=500, placeholder="Pega aquí tu mensaje...")
     with col2:
-        fila_inicio = st.number_input("2. ¿En qué FILA empiezan los datos? (Número)", min_value=1, value=6)
-    
-    st.caption("Tip: Abre tu Excel y mira la letra de la columna (A, B, C...) y el número de fila donde empieza el primer producto.")
+        if input_text:
+            output_text = procesar_texto_whatsapp(input_text)
+            st.text_area("✅ Salida (Precios Venta)", value=output_text, height=500)
+        else:
+            st.info("Esperando texto...")
 
-    if st.button("🚀 Remarcar Precios"):
-        try:
-            # Procesar
-            wb_resultado, num_cambios = procesar_excel_preservando_formato(uploaded_file, col_letra, fila_inicio)
+# --- PESTAÑA 2: EXCEL ---
+with tab2:
+    st.markdown("### Edita tu Excel sin romper el diseño")
+    uploaded_file = st.file_uploader("Sube tu archivo original (.xlsx)", type=["xlsx"])
+    
+    if uploaded_file:
+        st.info("Configuración de Coordenadas:")
+        c1, c2 = st.columns(2)
+        with c1:
+            col_letra = st.text_input("Letra de la Columna PRECIO", value="C").upper()
+        with c2:
+            fila_inicio = st.number_input("Número de Fila donde empiezan los datos", min_value=1, value=6)
             
-            if num_cambios > 0:
-                st.success(f"✅ ¡Listo! Se actualizaron {num_cambios} precios.")
+        if st.button("🚀 Remarcar Excel"):
+            try:
+                wb_res, n_cambios = procesar_excel_preservando_formato(uploaded_file, col_letra, fila_inicio)
                 
-                # Guardar en memoria para descargar
-                output = BytesIO()
-                wb_resultado.save(output)
-                datos = output.getvalue()
-                
-                st.download_button(
-                    label="📥 Descargar Excel Remarcado",
-                    data=datos,
-                    file_name="Lista_Precios_Venta.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-            else:
-                st.warning("⚠️ No se encontraron precios para cambiar. Verifica que la Letra de Columna y Fila de Inicio sean correctas.")
-                
-        except Exception as e:
-            st.error(f"Ocurrió un error: {e}")
+                if n_cambios > 0:
+                    st.success(f"✅ Se actualizaron {n_cambios} precios.")
+                    
+                    # Guardar para descarga
+                    output = BytesIO()
+                    wb_res.save(output)
+                    datos = output.getvalue()
+                    
+                    st.download_button(
+                        label="📥 Descargar Excel Remarcado",
+                        data=datos,
+                        file_name="Lista_Precios_Venta.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                else:
+                    st.warning("⚠️ No se cambiaron precios. Revisa si la Letra de Columna y Fila son correctas.")
+            except Exception as e:
+                st.error(f"Error procesando el archivo: {e}")
+
+# --- BARRA LATERAL ---
+with st.sidebar:
+    st.header("📊 Tabla de Aumentos")
+    st.markdown("---")
+    st.write("• **$1 - $9**: +$0.50")
+    st.write("• **$10 - $29**: +$2.00")
+    st.write("• **$30 - $119**: +$5.00")
+    st.write("• **$120 - $149**: +$10.00")
+    st.write("• **$150 - $289**: +$15.00")
+    st.write("• **$290 - $354**: +$20.00")
+    st.write("• **$355 - $414**: +$25.00")
+    st.write("• **$415 - $509**: +$30.00")
+    st.markdown("---")
+    st.write("• **$510 - $614**: +$30/$35")
+    st.write("• **$615 - $799**: +$40.00")
+    st.write("• **$800 - $999**: +$50.00")
+    st.write("• **+$1,000**: +5.5% (aprox)")
