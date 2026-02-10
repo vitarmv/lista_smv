@@ -4,12 +4,12 @@ import math
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
-    page_title="Remarcador de Precios v2",
-    page_icon="💸",
+    page_title="Remarcador de Precios v3",
+    page_icon="🚀",
     layout="wide"
 )
 
-# --- LÓGICA DE NEGOCIO (NUEVA TABLA DEL PDF) ---
+# --- LÓGICA DE NEGOCIO (ACTUALIZADA) ---
 def calcular_nuevo_precio(precio_original):
     p = float(precio_original)
     markup = 0
@@ -20,35 +20,43 @@ def calcular_nuevo_precio(precio_original):
     elif 10 <= p < 30:
         markup = 2.00
         
-    # 2. Rango Medio ($30 - $219)
+    # 2. Rango Medio ($30 - $119)
     elif 30 <= p < 120:
         markup = 5.00
-    elif 120 <= p < 220:
-        markup = 10.00
         
-    # 3. Rango Medio-Alto ($220 - $509)
-    elif 220 <= p < 290:
+    # 3. Rango Dividido ($120 - $219) [MODIFICADO]
+    elif 120 <= p < 150:
+        markup = 10.00
+    elif 150 <= p < 220:
         markup = 15.00
-    elif 290 <= p < 415:
+        
+    # 4. Rango Continuación ($220 - $289)
+    elif 220 <= p < 290:
+        markup = 15.00 # (Nota: Se junta con el anterior, efectivamente de 150 a 290 es +15)
+
+    # 5. Rango Dividido ($290 - $414) [MODIFICADO]
+    elif 290 <= p < 355:
         markup = 20.00
+    elif 355 <= p < 415:
+        markup = 25.00
+        
+    # 6. Rango Medio-Alto ($415 - $509)
     elif 415 <= p < 510:
         markup = 30.00
         
-    # 4. Rango Alto ($510 - $999)
+    # 7. Rango Alto ($510 - $999)
     elif 510 <= p < 615:
-        # El PDF dice "+30 a +35". Usamos un punto medio de corte en $550
+        # Corte en $550 para definir si es 30 o 35
         markup = 30.00 if p < 550 else 35.00
     elif 615 <= p < 800:
         markup = 40.00
     elif 800 <= p < 1000:
         markup = 50.00
         
-    # 5. Rango Premium (Más de $1,000)
+    # 8. Rango Premium (Más de $1,000)
     else:
-        # Aplica un 5.5% de margen
+        # Aplica un 5.5% de margen y redondea
         raw_markup = p * 0.055
-        # Redondeamos el markup al múltiplo de 5 más cercano para precios redondos
-        # Ejemplo: Si da 63.4 -> 65. Si da 61 -> 60.
         markup = round(raw_markup / 5) * 5
 
     return p + markup
@@ -58,7 +66,6 @@ def procesar_whatsapp(texto):
     resultado = []
     
     for linea in lineas:
-        # Busca precios con formato: *$500*, $500, $500.00
         match = re.search(r'(\*\$|\$)([\d\.,]+)(\*?)', linea)
         
         if match:
@@ -68,13 +75,11 @@ def procesar_whatsapp(texto):
                 
                 precio_nuevo = calcular_nuevo_precio(precio_base)
                 
-                # Formato sin decimales si es entero (ej: 1200) o con 2 si tiene centavos (ej: 12.50)
                 if precio_nuevo.is_integer():
-                    precio_final_str = f"{int(precio_nuevo):,}" # Agrega separador de miles
+                    precio_final_str = f"{int(precio_nuevo):,}"
                 else:
                     precio_final_str = f"{precio_nuevo:,.2f}"
                 
-                # Reconstruimos la línea manteniendo el estilo original
                 bloque_original = match.group(0)
                 bloque_nuevo = f"{match.group(1)}{precio_final_str}{match.group(3)}"
                 
@@ -89,7 +94,7 @@ def procesar_whatsapp(texto):
 
 # --- INTERFAZ DE USUARIO ---
 
-st.title("💸 Traductor de Precios Mayorista -> Cliente")
+st.title("🚀 Traductor de Precios Mayorista -> Cliente")
 st.markdown("### 📋 Pega tu lista de WhatsApp abajo")
 
 col1, col2 = st.columns(2)
@@ -101,21 +106,19 @@ with col2:
     if input_text:
         output_text = procesar_whatsapp(input_text)
         st.text_area("✅ Salida (Precios Venta)", value=output_text, height=500)
-        st.success("¡Conversión completada! Copia el resultado de arriba.")
+        st.success("¡Precios actualizados con los nuevos rangos!")
     else:
-        st.info("Esperando texto para procesar...")
+        st.info("Esperando texto...")
 
 # --- BARRA LATERAL (REFERENCIA) ---
 with st.sidebar:
-    st.header("📊 Tabla de Aumentos")
+    st.header("📊 Tabla de Aumentos Actualizada")
     st.write("• **$1 - $9**: +$0.50")
     st.write("• **$10 - $29**: +$2.00")
     st.write("• **$30 - $119**: +$5.00")
-    st.write("• **$120 - $219**: +$10.00")
-    st.write("• **$220 - $289**: +$15.00")
-    st.write("• **$290 - $414**: +$20.00")
+    st.write("• **$120 - $149**: +$10.00")
+    st.write("• **$150 - $289**: +$15.00")
+    st.write("• **$290 - $354**: +$20.00")
+    st.write("• **$355 - $414**: +$25.00")
     st.write("• **$415 - $509**: +$30.00")
-    st.write("• **$510 - $614**: +$30/$35")
-    st.write("• **$615 - $799**: +$40.00")
-    st.write("• **$800 - $999**: +$50.00")
-    st.write("• **+$1,000**: +5.5% (aprox)")
+    st.write("• **$510+**: (Escala estándar)")
