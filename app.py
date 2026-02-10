@@ -6,47 +6,64 @@ from io import BytesIO
 
 # --- CONFIGURACIÓN ---
 st.set_page_config(
-    page_title="Remarcador Pro v7",
+    page_title="Remarcador Pro v8",
     page_icon="💎",
     layout="wide"
 )
 
 # ==========================================
-#        LÓGICA DE CÁLCULO (COMÚN)
+#        LÓGICA DE CÁLCULO (ACTUALIZADA)
 # ==========================================
 def calcular_precio_venta(valor):
     try:
         # 1. Limpieza de texto a número
         if isinstance(valor, str):
             limpio = valor.replace('$', '').replace(',', '').replace('USD', '').strip()
-            # Si es vacío o texto sin números, devolvemos original
             if not limpio: return valor
             p = float(limpio)
         else:
             p = float(valor)
             
-        # 2. Si no es un número válido (NaN), devolvemos original
         if p is None or math.isnan(p): return valor
     except:
         return valor
 
     markup = 0
-    # --- TU TABLA DE AUMENTOS ---
+    
+    # --- TABLA DE AUMENTOS ---
+    
+    # Rangos Bajos
     if p < 10: markup = 0.50
     elif 10 <= p < 30: markup = 2.00
     elif 30 <= p < 120: markup = 5.00
     elif 120 <= p < 150: markup = 10.00
     elif 150 <= p < 290: markup = 15.00
+    
+    # Rangos Medios
     elif 290 <= p < 355: markup = 20.00
     elif 355 <= p < 415: markup = 25.00
     elif 415 <= p < 510: markup = 30.00
-    elif 510 <= p < 615: markup = 30.00 if p < 550 else 35.00
-    elif 615 <= p < 800: markup = 40.00
-    elif 800 <= p < 1000: markup = 50.00
+    
+    # Rangos Altos (MODIFICADO)
+    elif 510 <= p < 615: 
+        markup = 30.00 if p < 550 else 35.00
+        
+    # Nuevo desglose 615-799
+    elif 615 <= p < 710:
+        markup = 30.00
+    elif 710 <= p < 800:
+        markup = 35.00
+        
+    # Nuevo desglose 800-999
+    elif 800 <= p < 900:
+        markup = 40.00
+    elif 900 <= p < 1000:
+        markup = 45.00
+        
+    # Gama Premium (MODIFICADO A FIJO)
     else:
-        # > $1000: 5.5% redondeado a 5
-        raw_markup = p * 0.055
-        markup = round(raw_markup / 5) * 5
+        # Mayor o igual a 1000
+        markup = 55.00
 
     return p + markup
 
@@ -58,7 +75,6 @@ def procesar_texto_whatsapp(texto):
     resultado = []
     
     for linea in lineas:
-        # Busca precios como *$500*, $500, $500.00
         match = re.search(r'(\*\$|\$)([\d\.,]+)(\*?)', linea)
         if match:
             try:
@@ -66,7 +82,6 @@ def procesar_texto_whatsapp(texto):
                 precio_base = float(precio_str)
                 precio_nuevo = calcular_precio_venta(precio_base)
                 
-                # Formateo (sin decimales si es entero)
                 if isinstance(precio_nuevo, (int, float)):
                     if precio_nuevo.is_integer():
                         precio_final_str = f"{int(precio_nuevo):,}"
@@ -89,26 +104,22 @@ def procesar_texto_whatsapp(texto):
 #        FUNCIÓN 2: PROCESAR EXCEL
 # ==========================================
 def procesar_excel_preservando_formato(uploaded_file, columna_letra, fila_inicio):
-    # Carga el archivo manteniendo estilos
     wb = openpyxl.load_workbook(uploaded_file)
-    ws = wb.active # Toma la hoja activa
+    ws = wb.active 
     
-    # Convierte letra a índice (A=1, B=2, C=3...)
     col_idx = openpyxl.utils.column_index_from_string(columna_letra)
     
     cambios = 0
     
-    # Recorre solo la columna indicada desde la fila indicada
     for row in ws.iter_rows(min_row=fila_inicio, min_col=col_idx, max_col=col_idx):
         celda = row[0]
         valor_original = celda.value
         
-        # Si la celda tiene un valor, intentamos calcular
         if valor_original is not None:
             nuevo_precio = calcular_precio_venta(valor_original)
             
-            # Si el cálculo devolvió un número diferente, actualizamos
-            if nuevo_precio != valor_original:
+            # Verificamos si cambió y es numérico
+            if nuevo_precio != valor_original and isinstance(nuevo_precio, (int, float)):
                 celda.value = nuevo_precio
                 cambios += 1
                 
@@ -118,9 +129,8 @@ def procesar_excel_preservando_formato(uploaded_file, columna_letra, fila_inicio
 #            INTERFAZ GRÁFICA
 # ==========================================
 
-st.title("💎 Remarcador Pro v7")
+st.title("💎 Remarcador Pro v8")
 
-# Creamos las pestañas
 tab1, tab2 = st.tabs(["📝 Texto WhatsApp", "📂 Archivo Excel (Formato Intacto)"])
 
 # --- PESTAÑA 1: WHATSAPP ---
@@ -156,7 +166,6 @@ with tab2:
                 if n_cambios > 0:
                     st.success(f"✅ Se actualizaron {n_cambios} precios.")
                     
-                    # Guardar para descarga
                     output = BytesIO()
                     wb_res.save(output)
                     datos = output.getvalue()
@@ -174,7 +183,7 @@ with tab2:
 
 # --- BARRA LATERAL ---
 with st.sidebar:
-    st.header("📊 Tabla de Aumentos")
+    st.header("📊 Tabla de Aumentos (v8)")
     st.markdown("---")
     st.write("• **$1 - $9**: +$0.50")
     st.write("• **$10 - $29**: +$2.00")
@@ -184,8 +193,12 @@ with st.sidebar:
     st.write("• **$290 - $354**: +$20.00")
     st.write("• **$355 - $414**: +$25.00")
     st.write("• **$415 - $509**: +$30.00")
-    st.markdown("---")
     st.write("• **$510 - $614**: +$30/$35")
-    st.write("• **$615 - $799**: +$40.00")
-    st.write("• **$800 - $999**: +$50.00")
-    st.write("• **+$1,000**: +5.5% (aprox)")
+    st.markdown("---")
+    # NUEVOS RANGOS MOSTRADOS AQUÍ
+    st.write("• **$615 - $709**: +$30.00")
+    st.write("• **$710 - $799**: +$35.00")
+    st.write("• **$800 - $899**: +$40.00")
+    st.write("• **$900 - $999**: +$45.00")
+    st.markdown("---")
+    st.write("• **+$1,000**: +$55.00 (Fijo)")
