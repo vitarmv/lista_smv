@@ -1,37 +1,57 @@
 import streamlit as st
 import re
+import math
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
-    page_title="Remarcador de Precios",
-    page_icon="💰",
+    page_title="Remarcador de Precios v2",
+    page_icon="💸",
     layout="wide"
 )
 
-# --- LÓGICA DE NEGOCIO (TU TABLA MAESTRA) ---
-def calcular_markup(precio_original):
+# --- LÓGICA DE NEGOCIO (NUEVA TABLA DEL PDF) ---
+def calcular_nuevo_precio(precio_original):
     p = float(precio_original)
+    markup = 0
     
+    # 1. Rango Bajo ($1 - $29)
     if p < 10:
-        return p + 0.50
+        markup = 0.50
     elif 10 <= p < 30:
-        return p + 2.00
-    elif 30 <= p < 100:
-        return p + 5.00
-    elif 100 <= p < 200:
-        return p + 7.50
-    elif 200 <= p < 400:
-        return p + 15.00 if p < 300 else p + 20.00
-    elif 400 <= p < 500:
-        return p + 25.00
-    elif 500 <= p < 800:
-        return p + 30.00 if p < 600 else p + 40.00
-    elif 800 <= p < 900:
-        return p + 45.00
-    elif p >= 900:
-        return p + 50.00
+        markup = 2.00
+        
+    # 2. Rango Medio ($30 - $219)
+    elif 30 <= p < 120:
+        markup = 5.00
+    elif 120 <= p < 220:
+        markup = 10.00
+        
+    # 3. Rango Medio-Alto ($220 - $509)
+    elif 220 <= p < 290:
+        markup = 15.00
+    elif 290 <= p < 415:
+        markup = 20.00
+    elif 415 <= p < 510:
+        markup = 30.00
+        
+    # 4. Rango Alto ($510 - $999)
+    elif 510 <= p < 615:
+        # El PDF dice "+30 a +35". Usamos un punto medio de corte en $550
+        markup = 30.00 if p < 550 else 35.00
+    elif 615 <= p < 800:
+        markup = 40.00
+    elif 800 <= p < 1000:
+        markup = 50.00
+        
+    # 5. Rango Premium (Más de $1,000)
     else:
-        return p
+        # Aplica un 5.5% de margen
+        raw_markup = p * 0.055
+        # Redondeamos el markup al múltiplo de 5 más cercano para precios redondos
+        # Ejemplo: Si da 63.4 -> 65. Si da 61 -> 60.
+        markup = round(raw_markup / 5) * 5
+
+    return p + markup
 
 def procesar_whatsapp(texto):
     lineas = texto.splitlines()
@@ -45,14 +65,16 @@ def procesar_whatsapp(texto):
             try:
                 precio_str = match.group(2).replace(',', '')
                 precio_base = float(precio_str)
-                precio_nuevo = calcular_markup(precio_base)
                 
-                # Formato sin decimales si es entero
+                precio_nuevo = calcular_nuevo_precio(precio_base)
+                
+                # Formato sin decimales si es entero (ej: 1200) o con 2 si tiene centavos (ej: 12.50)
                 if precio_nuevo.is_integer():
-                    precio_final_str = f"{int(precio_nuevo)}"
+                    precio_final_str = f"{int(precio_nuevo):,}" # Agrega separador de miles
                 else:
-                    precio_final_str = f"{precio_nuevo:.2f}"
+                    precio_final_str = f"{precio_nuevo:,.2f}"
                 
+                # Reconstruimos la línea manteniendo el estilo original
                 bloque_original = match.group(0)
                 bloque_nuevo = f"{match.group(1)}{precio_final_str}{match.group(3)}"
                 
@@ -65,38 +87,35 @@ def procesar_whatsapp(texto):
 
     return "\n".join(resultado)
 
-# --- INTERFAZ DE USUARIO (STREAMLIT) ---
+# --- INTERFAZ DE USUARIO ---
 
-st.title("📈 Traductor de Precios Mayorista -> Cliente")
-st.markdown("""
-Esta herramienta toma la lista de WhatsApp de tu proveedor y aplica automáticamente 
-la **escala de aumentos** definida.
-""")
+st.title("💸 Traductor de Precios Mayorista -> Cliente")
+st.markdown("### 📋 Pega tu lista de WhatsApp abajo")
 
 col1, col2 = st.columns(2)
 
 with col1:
-    st.subheader("1. Pega la lista del Proveedor")
-    input_text = st.text_area("Lista con precios de costo (WhatsApp)", height=400, placeholder="Pega aquí el mensaje tal cual te llegó...")
+    input_text = st.text_area("⬇️ Entrada (Precios Costo)", height=500, placeholder="Ejemplo:\n🔥iPhone 15 128GB *$630*\nParlante JBL *$6.5*")
 
 with col2:
-    st.subheader("2. Lista Lista para enviar")
     if input_text:
         output_text = procesar_whatsapp(input_text)
-        st.text_area("Lista con precios de venta (Resultado)", value=output_text, height=400)
-        st.info("👆 Copia el texto de arriba y pégalo en el chat de tus clientes.")
+        st.text_area("✅ Salida (Precios Venta)", value=output_text, height=500)
+        st.success("¡Conversión completada! Copia el resultado de arriba.")
     else:
-        st.warning("Esperando texto...")
+        st.info("Esperando texto para procesar...")
 
 # --- BARRA LATERAL (REFERENCIA) ---
 with st.sidebar:
-    st.header("Reglas Aplicadas")
-    st.write("• **$1-$9**: +$0.50")
-    st.write("• **$10-$29**: +$2.00")
-    st.write("• **$30-$99**: +$5.00")
-    st.write("• **$100-$199**: +$7.50")
-    st.write("• **$200-$399**: +$15 o +$20")
-    st.write("• **$400-$499**: +$25")
-    st.write("• **$500-$799**: +$30 o +$40")
-    st.write("• **$800-$899**: +$45")
-    st.write("• **+$900**: +$50")
+    st.header("📊 Tabla de Aumentos")
+    st.write("• **$1 - $9**: +$0.50")
+    st.write("• **$10 - $29**: +$2.00")
+    st.write("• **$30 - $119**: +$5.00")
+    st.write("• **$120 - $219**: +$10.00")
+    st.write("• **$220 - $289**: +$15.00")
+    st.write("• **$290 - $414**: +$20.00")
+    st.write("• **$415 - $509**: +$30.00")
+    st.write("• **$510 - $614**: +$30/$35")
+    st.write("• **$615 - $799**: +$40.00")
+    st.write("• **$800 - $999**: +$50.00")
+    st.write("• **+$1,000**: +5.5% (aprox)")
