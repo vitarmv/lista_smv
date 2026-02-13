@@ -6,7 +6,7 @@ from io import BytesIO
 
 # --- CONFIGURACIÓN ---
 st.set_page_config(
-    page_title="Remarcador Pro v8",
+    page_title="Remarcador Pro v9",
     page_icon="💎",
     layout="wide"
 )
@@ -30,7 +30,7 @@ def calcular_precio_venta(valor):
 
     markup = 0
     
-    # --- TABLA DE AUMENTOS ---
+    # --- TABLA DE AUMENTOS v8 ---
     
     # Rangos Bajos
     if p < 10: markup = 0.50
@@ -44,7 +44,7 @@ def calcular_precio_venta(valor):
     elif 355 <= p < 415: markup = 25.00
     elif 415 <= p < 510: markup = 30.00
     
-    # Rangos Altos (MODIFICADO)
+    # Rangos Altos
     elif 510 <= p < 615: 
         markup = 30.00 if p < 550 else 35.00
         
@@ -60,7 +60,7 @@ def calcular_precio_venta(valor):
     elif 900 <= p < 1000:
         markup = 45.00
         
-    # Gama Premium (MODIFICADO A FIJO)
+    # Gama Premium
     else:
         # Mayor o igual a 1000
         markup = 55.00
@@ -68,14 +68,28 @@ def calcular_precio_venta(valor):
     return p + markup
 
 # ==========================================
-#        FUNCIÓN 1: PROCESAR TEXTO
+#   FUNCIÓN 1: PROCESAR TEXTO (CON LIMPIEZA)
 # ==========================================
 def procesar_texto_whatsapp(texto):
     lineas = texto.splitlines()
     resultado = []
     
+    # Patrón Regex para detectar: [fecha hora] Nombre:
+    # Ejemplo: [12/2 10:21 a. m.] José Felixxx:
+    patron_chat = r'^\[\d{1,2}/\d{1,2}.*?\] .*?:'
+
     for linea in lineas:
-        match = re.search(r'(\*\$|\$)([\d\.,]+)(\*?)', linea)
+        # --- PASO DE LIMPIEZA ---
+        # Si la línea empieza con el patrón de WhatsApp, lo borramos
+        linea_limpia = re.sub(patron_chat, '', linea).strip()
+        
+        # Si después de limpiar la línea queda vacía (era solo el nombre y fecha), la saltamos
+        if not linea_limpia:
+            continue
+            
+        # Usamos la línea limpia para el cálculo
+        match = re.search(r'(\*\$|\$)([\d\.,]+)(\*?)', linea_limpia)
+        
         if match:
             try:
                 precio_str = match.group(2).replace(',', '')
@@ -90,14 +104,18 @@ def procesar_texto_whatsapp(texto):
                     
                     bloque_original = match.group(0)
                     bloque_nuevo = f"{match.group(1)}{precio_final_str}{match.group(3)}"
-                    linea_nueva = linea.replace(bloque_original, bloque_nuevo)
-                    resultado.append(linea_nueva)
+                    
+                    # Reemplazamos en la línea limpia
+                    linea_final = linea_limpia.replace(bloque_original, bloque_nuevo)
+                    resultado.append(linea_final)
                 else:
-                    resultado.append(linea)
+                    resultado.append(linea_limpia)
             except:
-                resultado.append(linea)
+                resultado.append(linea_limpia)
         else:
-            resultado.append(linea)
+            # Si no hay precio, agregamos la línea tal cual (pero limpia de encabezados)
+            resultado.append(linea_limpia)
+            
     return "\n".join(resultado)
 
 # ==========================================
@@ -129,20 +147,22 @@ def procesar_excel_preservando_formato(uploaded_file, columna_letra, fila_inicio
 #            INTERFAZ GRÁFICA
 # ==========================================
 
-st.title("💎 Remarcador Pro v8")
+st.title("💎 Remarcador Pro v9 (Anti-Spam WhatsApp)")
 
 tab1, tab2 = st.tabs(["📝 Texto WhatsApp", "📂 Archivo Excel (Formato Intacto)"])
 
 # --- PESTAÑA 1: WHATSAPP ---
 with tab1:
     st.markdown("### Copia y pega tu lista de WhatsApp")
+    st.info("💡 Ahora el sistema borra automáticamente líneas tipo: `[12/2 10:21 a. m.] José Felixxx:`")
+    
     col1, col2 = st.columns(2)
     with col1:
-        input_text = st.text_area("⬇️ Entrada (Precios Costo)", height=500, placeholder="Pega aquí tu mensaje...")
+        input_text = st.text_area("⬇️ Entrada (Con encabezados de chat)", height=500, placeholder="Pega aquí tu conversación completa...")
     with col2:
         if input_text:
             output_text = procesar_texto_whatsapp(input_text)
-            st.text_area("✅ Salida (Precios Venta)", value=output_text, height=500)
+            st.text_area("✅ Salida (Limpia y Calculada)", value=output_text, height=500)
         else:
             st.info("Esperando texto...")
 
@@ -195,7 +215,6 @@ with st.sidebar:
     st.write("• **$415 - $509**: +$30.00")
     st.write("• **$510 - $614**: +$30/$35")
     st.markdown("---")
-    # NUEVOS RANGOS MOSTRADOS AQUÍ
     st.write("• **$615 - $709**: +$30.00")
     st.write("• **$710 - $799**: +$35.00")
     st.write("• **$800 - $899**: +$40.00")
