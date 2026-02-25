@@ -6,13 +6,13 @@ from io import BytesIO
 
 # --- CONFIGURACIÓN ---
 st.set_page_config(
-    page_title="Remarcador Pro v10",
+    page_title="Remarcador Pro v11",
     page_icon="💎",
     layout="wide"
 )
 
 # ==========================================
-#        LÓGICA DE CÁLCULO (ESCALAS)
+#        LÓGICA DE CÁLCULO (ESCALAS V8)
 # ==========================================
 def calcular_precio_venta(valor):
     try:
@@ -70,7 +70,7 @@ def calcular_precio_venta(valor):
 # ==========================================
 #   FUNCIÓN 1: PROCESAR TEXTO (CON LIMPIEZA)
 # ==========================================
-def procesar_texto_whatsapp(texto, modo_fijo=False, monto_fijo=0.0):
+def procesar_texto_whatsapp(texto, modo="escala_v8", monto_fijo=0.0):
     lineas = texto.splitlines()
     resultado = []
     
@@ -83,7 +83,7 @@ def procesar_texto_whatsapp(texto, modo_fijo=False, monto_fijo=0.0):
         # Si la línea empieza con el patrón de WhatsApp, lo borramos
         linea_limpia = re.sub(patron_chat, '', linea).strip()
         
-        # Si después de limpiar la línea queda vacía (era solo el nombre y fecha), la saltamos
+        # Si después de limpiar la línea queda vacía, la saltamos
         if not linea_limpia:
             continue
             
@@ -95,10 +95,19 @@ def procesar_texto_whatsapp(texto, modo_fijo=False, monto_fijo=0.0):
                 precio_str = match.group(2).replace(',', '')
                 precio_base = float(precio_str)
                 
-                # APLICAMOS ESCALA O MONTO FIJO SEGÚN EL MODO
-                if modo_fijo:
+                # --- APLICAR LA LÓGICA SEGÚN EL MODO SELECCIONADO ---
+                if modo == "fijo":
                     precio_nuevo = precio_base + monto_fijo
+                elif modo == "escala_especial":
+                    if 200 <= precio_base <= 370:
+                        precio_nuevo = precio_base + 15.00
+                    elif 371 <= precio_base <= 540:
+                        precio_nuevo = precio_base + 20.00
+                    else:
+                        # Si está fuera de este rango, no le suma nada
+                        precio_nuevo = precio_base
                 else:
+                    # Modo por defecto (Escala v8 completa)
                     precio_nuevo = calcular_precio_venta(precio_base)
                 
                 if isinstance(precio_nuevo, (int, float)):
@@ -118,7 +127,7 @@ def procesar_texto_whatsapp(texto, modo_fijo=False, monto_fijo=0.0):
             except:
                 resultado.append(linea_limpia)
         else:
-            # Si no hay precio, agregamos la línea tal cual (pero limpia de encabezados)
+            # Si no hay precio, agregamos la línea tal cual
             resultado.append(linea_limpia)
             
     return "\n".join(resultado)
@@ -141,7 +150,6 @@ def procesar_excel_preservando_formato(uploaded_file, columna_letra, fila_inicio
         if valor_original is not None:
             nuevo_precio = calcular_precio_venta(valor_original)
             
-            # Verificamos si cambió y es numérico
             if nuevo_precio != valor_original and isinstance(nuevo_precio, (int, float)):
                 celda.value = nuevo_precio
                 cambios += 1
@@ -152,43 +160,60 @@ def procesar_excel_preservando_formato(uploaded_file, columna_letra, fila_inicio
 #            INTERFAZ GRÁFICA
 # ==========================================
 
-st.title("💎 Remarcador Pro v10 (Anti-Spam WhatsApp)")
+st.title("💎 Remarcador Pro v11 (Anti-Spam WhatsApp)")
 
-# SE AGREGÓ UNA PESTAÑA NUEVA PARA EL MONTO FIJO
-tab1, tab2, tab3 = st.tabs(["📝 WhatsApp (Escalas)", "➕ WhatsApp (Monto Fijo)", "📂 Archivo Excel (Formato Intacto)"])
+tab1, tab2, tab3 = st.tabs(["📝 WhatsApp (Escala v8)", "➕ WhatsApp (Fijo / Especial)", "📂 Archivo Excel (Formato Intacto)"])
 
 # --- PESTAÑA 1: WHATSAPP ESCALAS ---
 with tab1:
     st.markdown("### Copia y pega tu lista de WhatsApp")
-    st.info("💡 Usa la Tabla de Aumentos v8. Borra automáticamente líneas tipo: `[12/2 10:21 a. m.] José Felixxx:`")
+    st.info("💡 Usa la Tabla de Aumentos v8 Completa. Borra automáticamente etiquetas tipo: `[12/2 10:21 a. m.] José Felixxx:`")
     
     col1, col2 = st.columns(2)
     with col1:
         input_text_escalas = st.text_area("⬇️ Entrada (Con encabezados de chat)", height=450, placeholder="Pega aquí tu conversación completa...", key="escala_in")
     with col2:
         if input_text_escalas:
-            output_text_escalas = procesar_texto_whatsapp(input_text_escalas, modo_fijo=False)
-            st.text_area("✅ Salida (Limpia y Calculada por Escala)", value=output_text_escalas, height=450, key="escala_out")
+            output_text_escalas = procesar_texto_whatsapp(input_text_escalas, modo="escala_v8")
+            st.text_area("✅ Salida (Limpia y Calculada por Escala v8)", value=output_text_escalas, height=450, key="escala_out")
         else:
             st.info("Esperando texto...")
 
-# --- PESTAÑA 2: WHATSAPP MONTO FIJO (NUEVO) ---
+# --- PESTAÑA 2: WHATSAPP MONTO FIJO / ESCALA ESPECIAL ---
 with tab2:
-    st.markdown("### Aumentar un Monto Fijo")
-    st.info("💡 Aplica una suma exacta a todos los precios de la lista por igual.")
+    st.markdown("### Aumentos Personalizados")
+    st.info("💡 Suma un monto fijo a toda la lista, o aplica la Escala Especial.")
     
-    monto_seleccionado = st.selectbox(
-        "Selecciona el monto fijo en USD a sumar a cada producto:",
-        [5.0, 10.0, 15.0, 20.0, 25.0, 30.0, 40.0, 50.0]
-    )
+    opciones = [
+        "Suma Fija: +$5", 
+        "Suma Fija: +$10", 
+        "Suma Fija: +$15", 
+        "Suma Fija: +$20", 
+        "Suma Fija: +$25", 
+        "Suma Fija: +$30", 
+        "Suma Fija: +$40", 
+        "Suma Fija: +$50",
+        "🌟 Escala Especial (200 a 370: +$15 | 371 a 540: +$20)"
+    ]
+    
+    seleccion = st.selectbox("Selecciona la acción a aplicar:", opciones)
+    
+    # Determinar el modo según lo que seleccionó el usuario
+    if "Escala Especial" in seleccion:
+        modo_seleccionado = "escala_especial"
+        monto_a_sumar = 0.0
+    else:
+        modo_seleccionado = "fijo"
+        # Extraer el número del string (ej: de "Suma Fija: +$15" saca el 15)
+        monto_a_sumar = float(re.search(r'\d+', seleccion).group())
     
     col3, col4 = st.columns(2)
     with col3:
         input_text_fijo = st.text_area("⬇️ Entrada (Con encabezados de chat)", height=400, placeholder="Pega aquí tu lista...", key="fijo_in")
     with col4:
         if input_text_fijo:
-            output_text_fijo = procesar_texto_whatsapp(input_text_fijo, modo_fijo=True, monto_fijo=monto_seleccionado)
-            st.text_area(f"✅ Salida (+${monto_seleccionado} Fijo)", value=output_text_fijo, height=400, key="fijo_out")
+            output_text_fijo = procesar_texto_whatsapp(input_text_fijo, modo=modo_seleccionado, monto_fijo=monto_a_sumar)
+            st.text_area(f"✅ Salida ({seleccion})", value=output_text_fijo, height=400, key="fijo_out")
         else:
             st.info("Esperando texto...")
 
