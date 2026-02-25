@@ -6,13 +6,13 @@ from io import BytesIO
 
 # --- CONFIGURACIÓN ---
 st.set_page_config(
-    page_title="Remarcador Pro v9",
+    page_title="Remarcador Pro v10",
     page_icon="💎",
     layout="wide"
 )
 
 # ==========================================
-#        LÓGICA DE CÁLCULO (ACTUALIZADA)
+#        LÓGICA DE CÁLCULO (ESCALAS)
 # ==========================================
 def calcular_precio_venta(valor):
     try:
@@ -70,7 +70,7 @@ def calcular_precio_venta(valor):
 # ==========================================
 #   FUNCIÓN 1: PROCESAR TEXTO (CON LIMPIEZA)
 # ==========================================
-def procesar_texto_whatsapp(texto):
+def procesar_texto_whatsapp(texto, modo_fijo=False, monto_fijo=0.0):
     lineas = texto.splitlines()
     resultado = []
     
@@ -94,7 +94,12 @@ def procesar_texto_whatsapp(texto):
             try:
                 precio_str = match.group(2).replace(',', '')
                 precio_base = float(precio_str)
-                precio_nuevo = calcular_precio_venta(precio_base)
+                
+                # APLICAMOS ESCALA O MONTO FIJO SEGÚN EL MODO
+                if modo_fijo:
+                    precio_nuevo = precio_base + monto_fijo
+                else:
+                    precio_nuevo = calcular_precio_venta(precio_base)
                 
                 if isinstance(precio_nuevo, (int, float)):
                     if precio_nuevo.is_integer():
@@ -147,27 +152,48 @@ def procesar_excel_preservando_formato(uploaded_file, columna_letra, fila_inicio
 #            INTERFAZ GRÁFICA
 # ==========================================
 
-st.title("💎 Remarcador Pro v9 (Anti-Spam WhatsApp)")
+st.title("💎 Remarcador Pro v10 (Anti-Spam WhatsApp)")
 
-tab1, tab2 = st.tabs(["📝 Texto WhatsApp", "📂 Archivo Excel (Formato Intacto)"])
+# SE AGREGÓ UNA PESTAÑA NUEVA PARA EL MONTO FIJO
+tab1, tab2, tab3 = st.tabs(["📝 WhatsApp (Escalas)", "➕ WhatsApp (Monto Fijo)", "📂 Archivo Excel (Formato Intacto)"])
 
-# --- PESTAÑA 1: WHATSAPP ---
+# --- PESTAÑA 1: WHATSAPP ESCALAS ---
 with tab1:
     st.markdown("### Copia y pega tu lista de WhatsApp")
-    st.info("💡 Ahora el sistema borra automáticamente líneas tipo: `[12/2 10:21 a. m.] José Felixxx:`")
+    st.info("💡 Usa la Tabla de Aumentos v8. Borra automáticamente líneas tipo: `[12/2 10:21 a. m.] José Felixxx:`")
     
     col1, col2 = st.columns(2)
     with col1:
-        input_text = st.text_area("⬇️ Entrada (Con encabezados de chat)", height=500, placeholder="Pega aquí tu conversación completa...")
+        input_text_escalas = st.text_area("⬇️ Entrada (Con encabezados de chat)", height=450, placeholder="Pega aquí tu conversación completa...", key="escala_in")
     with col2:
-        if input_text:
-            output_text = procesar_texto_whatsapp(input_text)
-            st.text_area("✅ Salida (Limpia y Calculada)", value=output_text, height=500)
+        if input_text_escalas:
+            output_text_escalas = procesar_texto_whatsapp(input_text_escalas, modo_fijo=False)
+            st.text_area("✅ Salida (Limpia y Calculada por Escala)", value=output_text_escalas, height=450, key="escala_out")
         else:
             st.info("Esperando texto...")
 
-# --- PESTAÑA 2: EXCEL ---
+# --- PESTAÑA 2: WHATSAPP MONTO FIJO (NUEVO) ---
 with tab2:
+    st.markdown("### Aumentar un Monto Fijo")
+    st.info("💡 Aplica una suma exacta a todos los precios de la lista por igual.")
+    
+    monto_seleccionado = st.selectbox(
+        "Selecciona el monto fijo en USD a sumar a cada producto:",
+        [5.0, 10.0, 15.0, 20.0, 25.0, 30.0, 40.0, 50.0]
+    )
+    
+    col3, col4 = st.columns(2)
+    with col3:
+        input_text_fijo = st.text_area("⬇️ Entrada (Con encabezados de chat)", height=400, placeholder="Pega aquí tu lista...", key="fijo_in")
+    with col4:
+        if input_text_fijo:
+            output_text_fijo = procesar_texto_whatsapp(input_text_fijo, modo_fijo=True, monto_fijo=monto_seleccionado)
+            st.text_area(f"✅ Salida (+${monto_seleccionado} Fijo)", value=output_text_fijo, height=400, key="fijo_out")
+        else:
+            st.info("Esperando texto...")
+
+# --- PESTAÑA 3: EXCEL ---
+with tab3:
     st.markdown("### Edita tu Excel sin romper el diseño")
     uploaded_file = st.file_uploader("Sube tu archivo original (.xlsx)", type=["xlsx"])
     
@@ -184,7 +210,7 @@ with tab2:
                 wb_res, n_cambios = procesar_excel_preservando_formato(uploaded_file, col_letra, fila_inicio)
                 
                 if n_cambios > 0:
-                    st.success(f"✅ Se actualizaron {n_cambios} precios.")
+                    st.success(f"✅ Se actualizaron {n_cambios} precios usando la Escala v8.")
                     
                     output = BytesIO()
                     wb_res.save(output)
